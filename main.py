@@ -1,7 +1,6 @@
 import subprocess
 import asyncio
 import requests
-import time
 import os
 import sys
 import io
@@ -17,7 +16,7 @@ if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
 
 def get_stream_status():
-    """Проверяет, идет ли трансляция на канале"""
+
     try:
         url = f"https://www.twitch.tv/{CHANNEL_NAME}"
         response = requests.get(url, timeout=10)
@@ -26,12 +25,11 @@ def get_stream_status():
         return False
 
 def start_recording():
-    """Начинает запись трансляции"""
-    # Формируем имя файла с текущей датой и временем
+
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"{OUTPUT_DIR}/{CHANNEL_NAME}_{timestamp}.mp4"
     
-    # Команда для записи трансляции с помощью streamlink
+
     command = [
         "streamlink",
         f"https://www.twitch.tv/{CHANNEL_NAME}",
@@ -46,7 +44,7 @@ def start_recording():
     return process, filename
 
 async def monitor_and_record():
-    """Мониторит трансляции и записывает их"""
+    
     recording_process = None
     current_filename = None
     
@@ -57,30 +55,30 @@ async def monitor_and_record():
             is_live = get_stream_status()
             
             if is_live and recording_process is None:
-                # Трансляция началась, начинаем запись
+                
                 recording_process, current_filename = start_recording()
                 print("Трансляция началась, начинаю запись...")
             
             elif not is_live and recording_process is not None:
-                # Трансляция закончилась, останавливаем запись
+                
                 print("Трансляция закончилась, останавливаю запись...")
                 recording_process.terminate()
                 recording_process.wait()
                 recording_process = None
                 print(f"Запись сохранена как: {current_filename}")
             
-            # Ждем перед следующей проверкой
+           
             await asyncio.sleep(CHECK_INTERVAL)
             
         except Exception as e:
             print(f"Ошибка: {e}")
             await asyncio.sleep(CHECK_INTERVAL)
 
-# Для работы в фоновом режиме даже когда пользователь не в системе
+
 def run_as_service():
-    """Запускает мониторинг как сервис"""
-    if os.name == 'nt':  # Windows
-        # Создаем пакетный файл для запуска скрипта как службы
+    
+    if os.name == 'nt': 
+        
         batch_content = f"""
         @echo off
         :loop
@@ -96,7 +94,6 @@ def run_as_service():
         
    
 if __name__ == "__main__":
-
 
     asyncio.run(monitor_and_record())
 
