@@ -1,94 +1,103 @@
-import pyautogui
+import subprocess
 import asyncio
+import requests
+import time
+import os
+import sys
+import io
+from datetime import datetime
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-pyautogui.PAUSE = 0.5
-pyautogui.FAILSAFE = True
-
-async def move_to(x, y, duration=0):
-    await asyncio.get_event_loop().run_in_executor(None, lambda: pyautogui.moveTo(x, y, duration=duration))
-
-async def click():
-    await asyncio.get_event_loop().run_in_executor(None, pyautogui.click)
-
-async def right_click():
-    await asyncio.get_event_loop().run_in_executor(None, pyautogui.rightClick)
-
-async def double_click():
-    await asyncio.get_event_loop().run_in_executor(None, pyautogui.doubleClick)
-
-async def press(key):
-    await asyncio.get_event_loop().run_in_executor(None, lambda: pyautogui.press(key))
-
-async def write(text, interval=0):
-    await asyncio.get_event_loop().run_in_executor(None, lambda: pyautogui.write(text, interval=interval))
-
-async def hotkey(*keys):
-    0
-
-    await asyncio.get_event_loop().run_in_executor(None, lambda: pyautogui.hotkey(*keys))
-
-async def drag_to(x, y, duration=0.5):
-    await asyncio.get_event_loop().run_in_executor(None, lambda: pyautogui.dragTo(x, y, duration=duration))
-
-async def move(x, y, duration=0):
-    await asyncio.get_event_loop().run_in_executor(None, lambda: pyautogui.move(x, y, duration=duration))
-
-async def sleep(seconds):
-    await asyncio.sleep(seconds)
-
-async def main():
+CHANNEL_NAME = "At0m"
+CHECK_INTERVAL = 60  
+OUTPUT_DIR = "recordings"  #
 
 
-    # Firefox
-    await move_to(937, 1051, duration=0)
-    await right_click()
-    await move(0, -120, duration=0)
-    await click()
-    await sleep(1)
+if not os.path.exists(OUTPUT_DIR):
+    os.makedirs(OUTPUT_DIR)
+
+def get_stream_status():
+    """Проверяет, идет ли трансляция на канале"""
+    try:
+        url = f"https://www.twitch.tv/{CHANNEL_NAME}"
+        response = requests.get(url, timeout=10)
+        return "isLiveBroadcast" in response.text
+    except:
+        return False
+
+def start_recording():
+    """Начинает запись трансляции"""
+    # Формируем имя файла с текущей датой и временем
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"{OUTPUT_DIR}/{CHANNEL_NAME}_{timestamp}.mp4"
     
-    # Открываем Twitch
-    await move_to(899, 653, duration=0)
-    await double_click()
-    await sleep(0.5)
-    await press('enter')
-    await sleep(0.5)
+    # Команда для записи трансляции с помощью streamlink
+    command = [
+        "streamlink",
+        f"https://www.twitch.tv/{CHANNEL_NAME}",
+        "best",  # Записываем в лучшем качестве
+        "-o", filename,
+        "--retry-streams", "30",  # Повторять попытки подключения
+        "--retry-open", "10"      # Количество попыток открыть поток
+    ]
     
-    # Поиск канала
-    await move_to(1920/2, 1080/2, duration=0)
-    await move(-100, -430, duration=0)
-    await click()
-    await write('At0m', interval=0)
-    await press('enter')
-    await move(-310, 150, duration=0)
-    await click()
+    print(f"Начинаю запись трансляции в файл: {filename}")
+    process = subprocess.Popen(command)
+    return process, filename
 
-    await sleep(1)
-    # Создание записи
-    await move_to(241, 137, duration=0)
-    await hotkey('win', 'shift', 'r')
-    await click()
-    await drag_to(1578, 885, duration=1)
-    await move_to(853, 33, duration=0)
-    await sleep(0.5)
-    await click()
-    await sleep(0.5)
-    await click()
+async def monitor_and_record():
+    """Мониторит трансляции и записывает их"""
+    recording_process = None
+    current_filename = None
     
-    # Запись
-    await sleep(60)
+    print(f"Начинаю мониторинг канала {CHANNEL_NAME}...")
     
-    # Завершение записи
-    await move_to(889, 33, duration=0)
-    await click()
-    await sleep(0.5)
-    await move_to(1412, 108, duration=0)
-    await click()
-    await sleep(0.5)
-    await move_to(333, 342, duration=0)
-    await click()
-    await move_to(1015, 577, duration=0)
-    await click()
-    
+    while True:
+        try:
+            is_live = get_stream_status()
+            
+            if is_live and recording_process is None:
+                # Трансляция началась, начинаем запись
+                recording_process, current_filename = start_recording()
+                print("Трансляция началась, начинаю запись...")
+            
+            elif not is_live and recording_process is not None:
+                # Трансляция закончилась, останавливаем запись
+                print("Трансляция закончилась, останавливаю запись...")
+                recording_process.terminate()
+                recording_process.wait()
+                recording_process = None
+                print(f"Запись сохранена как: {current_filename}")
+            
+            # Ждем перед следующей проверкой
+            await asyncio.sleep(CHECK_INTERVAL)
+            
+        except Exception as e:
+            print(f"Ошибка: {e}")
+            await asyncio.sleep(CHECK_INTERVAL)
 
+# Для работы в фоновом режиме даже когда пользователь не в системе
+def run_as_service():
+    """Запускает мониторинг как сервис"""
+    if os.name == 'nt':  # Windows
+        # Создаем пакетный файл для запуска скрипта как службы
+        batch_content = f"""
+        @echo off
+        :loop
+        python {os.path.basename(__file__)}
+        timeout /t 60
+        goto loop
+        """
+        
+        with open("run_as_service.bat", "w") as f:
+            f.write(batch_content)
+        
+        print("Создан файл run_as_service.bat. Запустите его для работы в фоновом режиме.")
+        
+   
 if __name__ == "__main__":
-    asyncio.run(main())
+
+
+    asyncio.run(monitor_and_record())
+
+    run_as_service()
