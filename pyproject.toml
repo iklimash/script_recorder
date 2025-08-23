@@ -1,0 +1,15 @@
+[project]
+name = "script-record"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+[tool.ruff]
+
+select = ["E", "F", "W", "I", "UP"] 
+ignore = ["F401"] 
+
+line-length = 120
+
+[tool.ruff.isort]
